@@ -363,7 +363,7 @@
                           <!-- Event Detection System (Last Card) - Add special shadow -->
                           <div class="col" style="min-width: 300px;">
                               {% if 'username' in session %}
-                              <a href="{{ url_for('event_detection') }}" class="text-decoration-none text-dark">
+                              <a href="{{ url_for('auth_area_detection') }}" class="text-decoration-none text-dark">
                               {% else %}
                               <a href="{{ url_for('index') }}" class="text-decoration-none text-dark" 
                               onclick="alert('You need to log in first!')">
