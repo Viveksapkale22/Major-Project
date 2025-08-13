@@ -14,7 +14,7 @@ def generate_frames(video_source, model, tracker, global_state):
         print("Error opening video source.")
         return
 
-    frame_skip = 2  # Skip every other frame
+    frame_skip = 1  # Skip every other frame
     frame_count = 0
     resize_factor = 0.5
 
@@ -61,14 +61,14 @@ def generate_frames(video_source, model, tracker, global_state):
                                     cv2.putText(frame, "ALERT!", (50, frame.shape[0] - 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                                     alert_frame = frame.copy()
                                     email = global_state.get("email", "viveksapkale022@gmail.com")
-                                    threading.Thread(target=send_alert_email, args=(email, alert_frame, person_id)).start()
+                                    threading.Thread(target=send_alert_email, args=(email, alert_frame, person_id ,person_count)).start()
                                     global_state['last_alert_time'][person_id] = now
 
                         if person_id not in global_state['processing'] or not global_state['processing'][person_id]:
                             face_crop = frame[y1:y2, x1:x2]
                             if face_crop.size == 0:
                                 continue
-                            threading.Thread(target=analyze_gender, args=(person_id, face_crop, global_state)).start()
+                            threading.Thread(target=analyze_gender, args=(face_crop, global_state)).start()
         else:
             cv2.putText(frame, "standby mode (no motion)", (10, frame.shape[0] - 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
@@ -79,9 +79,16 @@ def generate_frames(video_source, model, tracker, global_state):
             cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
-        for pid, x1, y1, x2, y2 in [(pid, x1, y1, x2, y2) for pid, x1, y1, x2, y2 in global_state['detected_persons']]:
+        # for pid, x1, y1, x2, y2 in [(pid, x1, y1, x2, y2) for pid, x1, y1, x2, y2 in global_state['detected_persons']]:
+        #     gender_text = global_state['gender_labels'].get(pid, "Unknown")
+        #     cv2.putText(frame, f"ID {pid}: {gender_text}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+        for pid, x1, y1, x2, y2 in global_state['detected_persons']:
             gender_text = global_state['gender_labels'].get(pid, "Unknown")
-            cv2.putText(frame, f"ID {pid}: {gender_text}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            cv2.putText(frame, f"ID {pid}: {gender_text}",
+                        (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (255, 255, 255), 2)
+
 
         success, buffer = cv2.imencode('.jpg', frame)
         if not success:
