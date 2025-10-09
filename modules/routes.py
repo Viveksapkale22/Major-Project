@@ -22,12 +22,14 @@ def register_routes(app, model, tracker, users_collection, bcrypt, user_data_sto
         "stop_video_flag": threading.Event(),
         "selected_gender": "both",
         "gender_labels": {},
-        "processing": {},
+        "processing_gender": {},
         "last_alert_time": {},
         "person_tracks": {},
         "person_counter": 0,
         "detected_persons": [],
-        "email": "viveksapkale022@gmail.com"
+        "email": "viveksapkale022@gmail.com",
+        'auth_labels': {},       # Stores the result like ("Vivek (0.88)", False)
+        'processing_auth': {},   # Tracks which person is being processed for auth
     }
 
 

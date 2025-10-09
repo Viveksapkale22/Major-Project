@@ -7,6 +7,9 @@ from modules.utils import count_persons, boxes_intersect, play_alert, detect_mot
 from modules.utils import send_alert_email
 from modules.face_analysis import build_model, analyze_gender
 
+from modules.face_auth import authorized_db, match_face 
+
+
 # ✅ Load gender model once
 gender_model = build_model(r"static/gender_model_best.h5")
 
@@ -20,7 +23,35 @@ def analyze_gender_wrapper(face_crop, global_state, person_id):
         print(f"[GenderModel] Wrapper Error: {e}")
         global_state['gender_labels'][person_id] = "Unknown"
     finally:
-        global_state['processing'][person_id] = False  # mark as done
+        global_state['processing_gender'][person_id] = False  # mark as done
+
+
+
+def match_face_wrapper(face_crop, global_state, person_id):
+    """Thread-safe wrapper to run face matching and update state."""
+    try:
+        # The 'authorized_db' is already loaded in memory
+        name, similarity = match_face(face_crop, authorized_db)
+        if name:
+            label = f"{name} ({similarity:.2f})" if name != "Unauthorized" else "Unauthorized"
+            global_state['auth_labels'][person_id] = (label, name == "Unauthorized")
+        else:
+            # Face not detected in crop or some other error
+             global_state['auth_labels'][person_id] = (None, False)
+
+    except Exception as e:
+        print(f"[FaceAuth] Wrapper Error: {e}")
+        global_state['auth_labels'][person_id] = (None, False)
+    finally:
+        global_state['processing_auth'][person_id] = False # Mark as done
+
+
+
+
+
+
+
+
 
 
 def generate_frames(video_source, model, tracker, global_state):
@@ -85,14 +116,25 @@ def generate_frames(video_source, model, tracker, global_state):
                                     global_state['last_alert_time'][person_id] = now
 
                         # ✅ Gender analysis (threaded, one per person at a time)
-                        if person_id not in global_state['processing'] or not global_state['processing'][person_id]:
-                            face_crop = frame[y1:y2, x1:x2]
-                            if face_crop.size == 0:
-                                continue
-                            global_state['processing'][person_id] = True
-                            threading.Thread(target=analyze_gender_wrapper,
-                                             args=(face_crop, global_state, person_id),
-                                             daemon=True).start()
+                        # ✅ Gender and Face analysis (threaded)
+                        face_crop = frame[y1:y2, x1:x2]
+                        if face_crop.size > 0:
+                            # --- Gender Thread ---
+                            # Note: Renamed 'processing' to 'processing_gender' for clarity
+                            if person_id not in global_state.get('processing_gender', {}) or not global_state['processing_gender'].get(person_id):
+                                global_state.setdefault('processing_gender', {})[person_id] = True
+                                threading.Thread(target=analyze_gender_wrapper,
+                                                 args=(face_crop.copy(), global_state, person_id),
+                                                 daemon=True).start()
+
+                            # --- Face Auth Thread ---
+                            # This is the newly added part
+                            if person_id not in global_state.get('processing_auth', {}) or not global_state['processing_auth'].get(person_id):
+                                global_state.setdefault('processing_auth', {})[person_id] = True
+                                threading.Thread(target=match_face_wrapper,
+                                                 args=(face_crop.copy(), global_state, person_id),
+                                                 daemon=True).start()
+                            
 
         else:
             cv2.putText(frame, "standby mode (no motion)", (10, frame.shape[0] - 80),
@@ -106,12 +148,21 @@ def generate_frames(video_source, model, tracker, global_state):
             cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
-        # ✅ Draw gender labels on each detected person
+        # ✅ Draw gender labels on each detected person# ✅ Draw all labels on each detected person
         for pid, x1, y1, x2, y2 in global_state['detected_persons']:
-            gender_text = global_state['gender_labels'].get(pid, "Unknown")
+            # --- Draw Gender ---
+            gender_text = global_state['gender_labels'].get(pid, "...") # "..." looks better while processing
             cv2.putText(frame, f"ID {pid}: {gender_text}",
                         (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX,
                         0.5, (255, 255, 255), 2)
+            
+            # --- Draw Auth Status (Newly Added) ---
+            auth_status, is_unauthorized = global_state.get('auth_labels', {}).get(pid, (None, False))
+            if auth_status:
+                color = (0, 0, 255) if is_unauthorized else (0, 255, 0) # Red for unauthorized, green for authorized
+                cv2.putText(frame, auth_status,
+                            (x1, y2 + 20), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6, color, 2)
  
         success, buffer = cv2.imencode('.jpg', frame)
         if not success:
@@ -132,3 +183,4 @@ def track_person(state, bbox):
     state['person_counter'] += 1
     state['person_tracks'][state['person_counter']] = bbox
     return state['person_counter']
+
