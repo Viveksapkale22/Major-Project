@@ -11,7 +11,7 @@ from modules.face_auth import authorized_db, match_face
 
 
 # ✅ Load gender model once
-gender_model = build_model(r"static/gender_model_best.h5")
+gender_model = build_model(r"static/gender_model_finetuned.keras")
 
 
 def analyze_gender_wrapper(face_crop, global_state, person_id):
